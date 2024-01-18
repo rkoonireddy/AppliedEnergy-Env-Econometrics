@@ -1,0 +1,323 @@
+---
+title: "Assignment4"
+author: "Rohit Koonireddy"
+date: "2023-12-11"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T, message=F, warning=F, error=F, 
+                      comment=NA, cache=T, R.options=list(width=220), 
+                      fig.align='center', out.width='75%', fig.asp=.80)
+```
+Reference Hanna, R., Duflo, E. and Greenstone, M. (2016). Up in Smoke: The Influence of Human 
+Behavior on the Long-Run Impact of Improved Cooking Stoves. American Economic Journal: 
+Economic Policy, 8(1): pp. 80-114.
+```{r importLibraries}
+library(lfe)
+```
+
+Background: Refer to the paper cited above for answering these questions. 
+Improved (more energy \. efficient) cookstoves have been proposed as a panacea for solving the problem of indoor air 
+pollution, which is one of the leading causes of many health conditions, in developing countries 
+where firewood and other solid fuels are used as sources of energy for cooking purposes. However, 
+most studies do not look at the long-term effects of the adoption of these improved cookstoves, and 
+do not take into account realistic usage conditions for these technologies. The authors of this paper 
+conduct a long-run study of an RCT, in which they evaluate a program that distributed improved 
+cookstoves for free to households in the state of Orissa, India. They evaluate the impact of this 
+program on their usage, on health as well as on other socio-economic outcomes. 
+
+For answering the following questions, use the two datasets provided to you, as well as the variable 
+dictionary to refer to the definitions of all the variables used. 
+```{r message=FALSE, warning=FALSE}
+load("TH4_Q1.RData")
+
+#given that data is in a dply based tabled dataframe format, convert it into dataframe
+givenData1 <- as.data.frame(TH4_Q1)
+#summary(givenData1)
+
+#package to handle the given data
+if (!requireNamespace("labelled", quietly = TRUE)) {
+  install.packages("labelled")
+}
+library(labelled)
+
+# Convert variables with labels to standard R variables
+givenData1 <- as.data.frame(labelled::to_factor(givenData1))
+
+library(openxlsx)
+write.xlsx(givenData1, "upinsmoke.xlsx", row.names = FALSE)
+
+head(givenData1,5)
+str(givenData1)
+summary(givenData1)
+
+#colnames(givenData1)
+#check dimensions
+cat("Dimensions of the given data: ", dim(givenData1))
+
+
+#check for NA values in each column
+for (col in colnames(givenData1)) {
+  print(paste0("NA values in column ", col, ": ",sum(is.na(givenData1[col]))))
+  unique_values <- !duplicated(givenData1[[col]]) & !is.na(givenData1[[col]])
+  unique_values_sum <- sum(unique_values)
+  print(paste0("Sum of unique values in column ", col, ": ", unique_values_sum))
+}
+
+class(givenData1)
+```
+
+**Variable Definition**
+hhid                    :Household ID
+stovebuilt              :Whether GV improved stove at time of survey
+anystove                :Any low-polluting stove
+goodcond                :Whether GV improved stove in good condition
+good_user               :Whether a good user of improved stove
+mealslowpol_good_2      :No. of meals cooked on good stove
+n_meals_lastweek        :No. of meals cooked last week
+weight                  :HH weight
+area_M                  :Area
+village_M               :Village
+round_lottery           :In what round of the lottery has this HH been classified as treatment?
+lotteryround            :Lottery round
+SS1                     :Stove Status Survey 1 dummy
+MLhh                    :Midline Household dummy
+ML                      :Midline dummy
+SS2                     :Stove Status Survey 2 dummy
+EL                      :Endline dummy
+survmo                  :Survey month
+survyr                  :Survey year
+survey                  :Survey
+code_survey             :Code for survey
+survey_moyr_            :Survey month-year
+BINYRstoveown_moALL_0to12     :Indicator for 0-12 months after stove construction
+BINYRstoveown_moALL_13to24    :Indicator for 13-24 months after stove construction
+BINYRstoveown_moALL_25to36    :Indicator for 25-36 months after stove construction
+BINYRstoveown_moALL_37to48    :Indicator for 37-48 months after stove construction
+treat                         :Treatment
+
+![Table 3 from the paper](Table3_image_Duflo_et.al.png)
+
+# *Q1.*
+### a. Refer to Table 3 in the paper, and use the dataset “TH4_Q1.RData” for the analysis in this part of the question. Replicate the results of Panels A and B of the paper, or try to get as close as possible to the results in the paper. While you do not need to do the F-tests for checking that the coefficients across years are the same, it is important to report the coefficients and standard errors listed in Panels A and B, as well as the control group means in your results. 
+
+Pay attention to all the variables, how they are constructed, as well as to the information provided in the caption to Table 3. You need to clearly show in the code how you create the variables used in the models. The dependent variables in columns (1) to (3), as well as in column (5) are dummy variables, whereas the dependent variable in column (4) is continuous. All regressions must be weighted by the variable “weight”.
+
+```{r}
+#variables
+# "hhid"                       "stovebuilt"                 "anystove"                   "goodcond"                  
+# "good_user"                  "mealslowpol_good_2"         "n_meals_lastweek"           "weight"                    
+# "area_M"                     "village_M"                  "round_lottery"              "lotteryround"              
+# "SS1"                        "MLhh"                       "ML"                         "SS2"                       
+# "EL"                         "survmo"                     "survyr"                     "survey"                    
+# "code_survey"                "survey_moyr_"               "BINYRstoveown_moALL_0to12"  "BINYRstoveown_moALL_13to24"
+# "BINYRstoveown_moALL_25to36" "BINYRstoveown_moALL_37to48" "treat"
+```
+
+- Variables identification and construction:
+1. Gram vikas improved stove at the time of the survey - stovebuilt
+2. Any type of low polluting stove - anystove
+3. Gram vikas improved stove in good condition - goodcond
+4. Number of meals cooked on good condition, low-polluting stove - mealslowpol_good_2
+5. more than 75% of meals on good condition, low polluting stove - goodmeals75 - (mealslowpol_good_2/n_meals_lastweek)
+6. Fixed Effects:
+    1. village - village_M
+    2. Month of survey - survmo
+    3. Year of survey - survyr
+```{r}
+set.seed(42)
+
+givenData1$survey_moyr <- givenData1$survey_moyr_
+
+df_panel <- givenData1[, c("hhid", "treat", "stovebuilt", "anystove", "goodcond", "mealslowpol_good_2", "n_meals_lastweek", "village_M", "survmo", "survyr", "survey_moyr", "weight", "BINYRstoveown_moALL_0to12", "BINYRstoveown_moALL_13to24", "BINYRstoveown_moALL_25to36", "BINYRstoveown_moALL_37to48")]
+
+df_panel$goodmeals_75 <- as.numeric(df_panel$mealslowpol_good_2 / df_panel$n_meals_lastweek)
+df_panel$treatpanel0to12 <- df_panel$treat*df_panel$BINYRstoveown_moALL_0to12
+df_panel$treatpanel13to24 <- df_panel$treat*df_panel$BINYRstoveown_moALL_13to24
+df_panel$treatpanel25to36 <- df_panel$treat*df_panel$BINYRstoveown_moALL_25to36
+df_panel$treatpanel37to48 <- df_panel$treat*df_panel$BINYRstoveown_moALL_37to48
+
+library(lfe)
+library(stargazer)
+
+run_felm_models <- function(response_vars, treat_vars, formula_suffix, data) {
+  models <- list()
+  
+  # Models without interaction terms
+  for (treat_var in treat_vars) {
+    for (response_var in response_vars) {
+      formula <- as.formula(paste(response_var, "~", treat_var, "| village_M * survyr * survmo | 0 | hhid"))
+      model_name <- paste0("panela.row", which(treat_vars == treat_var), ".col", which(response_vars == response_var))
+      model <- felm(formula, data = data, weights = data$weight)
+      models[[model_name]] <- model
+    }
+  }
+
+  return(models)
+}
+
+
+response_vars <- c("stovebuilt", "anystove", "goodcond", "mealslowpol_good_2", "goodmeals_75")
+treat_vars <- c("treat","treatpanel0to12+treatpanel13to24+treatpanel25to36+treatpanel37to48")
+
+# Call the function
+result_models <- run_felm_models(response_vars, treat_vars, 1, df_panel)
+
+
+
+library(stargazer)
+stargazer(result_models[1:5],
+          type="text",
+          title="Reduced Form Effect of Stove Offer on Take-Up and Usage - Table 3 Reproduction Panel A",
+          star.cutoffs = c(0.10, 0.05, 0.01),
+          keep.stat=c("n", "rsq"))
+
+stargazer(result_models[6:10],
+          type="text",
+          title="Reduced Form Effect of Stove Offer on Take-Up and Usage - Table 3 Reproduction Panel B",
+          star.cutoffs = c(0.10, 0.05, 0.01),
+          keep.stat=c("n", "rsq"))
+
+
+```
+While my results match entirely, these are relatively close to the given ones. 
+
+Empirical model 1: 
+\[ Y_{ihvt} = \beta_0 + \beta_1 T_{ihvt} + (\delta_v \times \gamma_t) + \varepsilon_{ihvt} \]
+Begin by estimating the reduced form effect of winning the stove on a series of outcomes, including 
+stove use, CO exposure, health, and other non-health stove outcomes (such as fuel 
+use and cooking time). Specifically, we estimate
+
+Empirical model 2: 
+\[ Y_{ihvt} = \beta_0 + \sum_{k=1}^{4} \left( \beta_k \cdot (T_{ihvt} \times I_k) \right) + (\delta_v \times \gamma_t) + \varepsilon_{ihvt} \]
+there are now four parameters of interest (β1, β2,  β3, and β4), which 
+capture the effect of having won the lottery within one year of the stove being built, 
+within 13 to 24 months of the stove being built, etc. Due to the timing of Lottery 2 
+and the surveys, β1 is identified from winners of both Lottery 1 and 2, but the other 
+βs are only identified from the Lottery 1 winners.
+
+Empirical model 3: 
+\[ Y_{ihvt} = \theta_0 + \theta_1 \text{Use}_{ihvt} + (\delta_v \times \gamma_t) + \varepsilon_{ihvt} \]
+where \[\text{Use}_{ihvt}\] is either a measure of whether the household owns a low-polluting 
+stove or the number of meals cooked with a good condition, low-polluting stove 
+over the last week. As selected individuals may choose whether to take up a stove, 
+an OLS estimate of θ1 would be biased. Thus, we use the treatment variable (Tihvt)
+as an instrument for Useihvt in equation
+
+
+## b. Interpret the results of this Table, in terms of the magnitudes of the overall treatment effects, and how they seem to be changing over time.
+--- 
+###Panel A 
+stovebuilt: The coefficient is 0.617, and it is statistically significant (p < 0.01). This suggests that the treatment variable has a significant effect on stovebuilt.
+
+anystove: The coefficient is 0.471, and it is statistically significant (p < 0.01). This suggests that the treatment variable has a significant effect on the presence of any functional stove (anystove).
+
+goodcond: The coefficient is 0.363, and it is statistically significant (p < 0.01). This suggests that the treatment variable has a significant effect on the presence of an improved chulha in good condition (goodcond).
+
+mealslowpol_good_2: The coefficient is 3.100, and it is statistically significant (p < 0.01). This suggests that the treatment variable has a significant effect on the variable mealslowpol_good_2.
+
+goodmeals_75: The coefficient is 0.214, and it is statistically significant (p < 0.01). This suggests that the treatment variable has a significant effect on the variable goodmeals_75
+
+###Panel B: 
+Time interaction suggests that mostly there aren't any affects based on the inclusion period. We see a slight reduction only for 25 to 36 months duration compared to others but all of them are positive in direction. 
+
+---
+
+**********************************************************************************************************
+
+# *Q2*
+```{r message=FALSE, warning=FALSE}
+load("TH4_Q2.RData")
+
+#given that data is in a dply based tabled dataframe format, convert it into dataframe
+givenData2 <- as.data.frame(TH4_Q2)
+
+head(givenData2,5)
+str(givenData2)
+summary(givenData2)
+
+#colnames(givenData1)
+#check dimensions
+cat("Dimensions of the given data: ", dim(givenData2))
+
+
+#check for NA values in each column
+for (col in colnames(givenData2)) {
+  print(paste0("NA values in column ", col, ": ",sum(is.na(givenData2[col]))))
+  unique_values <- !duplicated(givenData2[[col]]) & !is.na(givenData2[[col]])
+  unique_values_sum <- sum(unique_values)
+  print(paste0("Sum of unique values in column ", col, ": ", unique_values_sum))
+}
+
+class(givenData1)
+```
+### a. In order to do a successful randomization, it is important that the treatment and control groups are not too different from one other in terms of parameters other than the randomization status. Use dataset “TH4_Q2.RData” for answering this part of Q2. In this dataset, you are provided information on some health-related measures collected during the baseline survey for individuals the authors refer to as “primary cooks”, those members of the household who have the main responsibility for cooking. Use this dataset to test whether the variables mentioned in Table 2 Panel A of the paper are indeed “balanced” across groups. The specific sets of groups over which you should test this are only Treatment vs. Control. Do you notice any variables whose means are significantly different across these groupings mentioned in 1) and 2)? As suggested in the caption to Table 2, the top 1% of observations for continuous variables have already been dropped in the dataset provided to you (you don’t need to do this). Note that there is more than one way of testing this, and you will get credit regardless of which approach you use, as long as you adequately explain what you do, and your results. 
+The idea is to check that the treatment and control groups are not too different using the following methods as discussed in the class: 
+1. Unconfoundedness: Observational Equivalence: Ensure that treatment assignment is independent of potential outcomes, conditional on observed covariates.
+Balance Tests: Compare the distribution of covariates between treatment and control groups. Use statistical tests (e.g., t-tests for continuous variables, chi-squared tests for categorical variables) to check for significant differences.
+
+2. SUTVA (Stable Unit Treatment Value Assumption):
+No Interference: Confirm that the treatment status of one unit does not affect the outcomes of other units. This is crucial in situations where the treatment of one unit may impact the outcomes of others.
+
+3. Probabilistic Assignment:
+Randomization Checks: If randomization was used, ensure that it was conducted properly. Check for randomization balance in observed covariates.
+Propensity Score Model: If observational data is used, estimate the propensity score (probability of treatment given covariates) and check for balance in covariates across different propensity score strata.
+
+```{r VisualInspection}
+df <- givenData2
+# Continuous variable: BMI
+boxplot(bmi_99 ~ treatment, data = df, main = "BMI by Treatment Group")
+
+# Categorical variable: Gender
+barplot(table(df$female_bl, df$treatment), beside = TRUE, legend = TRUE, 
+        names.arg = c("Male", "Female"), main = "Gender Distribution by Treatment Group")
+```
+We clearly see the varied gender distributions in male and female. This could be primarily due to the fact that in india women / wives tend to make meals for the family, and stays and home. Hence, they will be more prone to the in the house pollution.
+
+
+using propensity scores to see: Wighting of the comparison cases to estimate the average treatment effect on the treated (ATT) and updating
+population weights (e.g., weighting of comparison and treatment cases to estimate the population average treatment effect, ATE).
+We will use ATE here.
+```{r Propensity Score}
+library(twang)
+
+# List of covariates
+covariates <- c(
+   "resid_M", "village_M", "Lottery1", "Lottery2",
+  "female_bl", "COad99_BL", "bmi_99", "fev1_99_BL", "fev1fvc_99_BL",
+  "fvc_99_BL", "ihealthexp_lstmo_99_BL", "wheeze", "tightchest", "cough",
+  "cold", "cold_or_cough", "phlegm", "headache", "soreeyes", "anyillness",
+  "Control")
+
+df_panel2 <- df[,c("treatment", covariates)]
+
+# Fit the propensity score model
+ps_model <- ps(treatment ~ ., data = na.omit(df_panel2),
+               estimand = "ATE",
+               verbose = FALSE)
+
+
+summary(ps_model)
+# Create a balance table
+bal.table <- bal.table(ps_model)
+plot(ps_model, plots = 1)
+plot(ps_model, plots = 2)
+
+```
+
+
+### b.Irrespective of the results that you obtained in part a), let’s assume a situation where the control and treatment groups differed along some important dimensions (such as the health status of individuals like primary cooks or children). Based on what you learnt in the lecture, argue how this creates a problem for an econometrician looking to estimate a treatment effect for stove distribution (be as specific about the source of the problem as possible). How can one address this problem empirically?
+
+1. Confounding Factors: When the treatment and control groups differ on key dimensions such as the health status of primary cooks or children, it introduces the risk of confounding variables. These unobserved or inadequately controlled variables can bias the estimated treatment effect, leading to spurious or inaccurate conclusions.
+
+2. **Endogeneity**: The endogeneity issue arises when the assignment of treatment is not independent of the potential outcomes. In this case, if health status influences the likelihood of receiving the treatment (stove distribution), it creates a correlation between the treatment assignment and the potential outcomes, making it challenging to isolate the causal effect.
+
+Addressing the Problem Empirically:
+1. **Instrumental Variables (IV)**: Identifying instrumental variables that affect the probability of treatment assignment but are unrelated to the outcome can be used. This method relies on finding an instrument that mimics randomization.
+
+Propensity Score Matching: One common approach to address confounding is to estimate the propensity score—the probability of receiving treatment given observed covariates. Matching or weighting based on the propensity score can balance the distribution of covariates between treatment and control groups.
+
+Sensitivity Analysis: Conduct sensitivity analyses to assess the robustness of the estimated treatment effect to potential unobserved confounding. This involves varying assumptions about the strength of the unobserved confounding required to alter the conclusions.
+
+Subgroup Analysis: Explore whether the treatment effect varies across different subgroups. This can provide insights into the potential heterogeneity in treatment effects.
+

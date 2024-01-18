@@ -1,0 +1,82 @@
+---
+title: "Lab3_rmd"
+author: "Rohit Koonireddy"
+date: "2024-01-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Multinomial Logit and Nested Models
+```{r Load data}
+library(AER)
+data("TravelMode", package = "AER")
+#AER package means Applied Econometrics with R
+head(TravelMode) #one row for one choice for one individual <- meaning this is in long format
+data("Fishing", package= "mlogit")
+head(Fishing)
+summary(TravelMode)#here one individual is present and the final choice, we do not see other choices, so this is wide format. the "mode" columns gives the values here
+#get props
+with(TravelMode, prop.table(table(mode[choice=="yes"])))
+
+#formats of data:
+##Long format: one row = one choice for one individual
+##Wide format: one row = one individual
+
+#convert wide data Fishing to long
+dim(Fishing)
+head(Fishing)
+dfidx(Fishing, varying = 2:9, shape= "wide", choice= "mode")
+
+
+library(dfidx)
+#prepare package for mlogit
+travel_data <- dfidx(TravelMode,
+                     idx = c("individual", "mode"),
+                     choice = "choice",
+                     levels = c("air","train","bus","car"))
+travel_data
+
+#now run mlogit
+summary(mlogit(choice ~ wait+vcost+travel|1, data = travel_data ))
+
+
+#mulitnomial logit model coeffecients
+summary(mlogit(choice~1|income, data=travel_data))
+
+#multinomial logit model odds ratio
+print(exp(coef(mlogit(choice~1|income, data=travel_data))))
+
+colnames(travel_data)
+#conditional 
+m3 <- mlogit(choice ~ wait+vcost+travel|income+size, data=travel_data)
+summary(mlogit(choice ~ wait+vcost+travel|income+size, data=travel_data, reflevel = "train"))
+
+
+#get predicted share of each mode
+apply(fitted(m3, outcome = "FALSE"), 2, mean)
+with(TravelMode, prop.table(table(mode[choice == "yes"])))
+
+
+m0 <- mlogit(choice ~ wait + travel + vcost | 0, data = travel_data)
+summary(m0)
+
+apply(fitted(m0, outcome = "FALSE"), 2, mean)
+with(TravelMode, prop.table(table(mode[choice == "yes"])))
+
+
+mbad <- mlogit(choice ~ 0 | 1, data = travel_data)
+summary(mbad)
+apply(fitted(mbad, outcome = "FALSE"), 2, mean)
+with(TravelMode, prop.table(table(mode[choice == "yes"])))
+```
+
+## Including Plots
+You can also embed plots, for example:
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

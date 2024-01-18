@@ -1,0 +1,533 @@
+---
+title: "Take Home 2"
+author: "Rohit Koonireddy"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:  html_document
+---
+
+```{r include=FALSE}
+knitr::opts_chunk$set(echo = T, message=F, warning=F, error=F, 
+                      comment=NA, cache=T, R.options=list(width=220), 
+                      fig.align='center', out.width='75%', fig.asp=.75)
+```
+
+Sample Solutions for Take Home assignment 2 for Applied Econometrics in Environmental Energy and Policy.
+#Exercise A: Difference in differences
+```{r}
+load("Data_Electricity.RData")
+ls()
+electricity_data <- Data
+
+rows_with_na <- which(apply(electricity_data, 1, function(row) any(is.na(row))))
+
+#check for NAs
+if (length(rows_with_na) > 0) {
+  print("Rows with NA values:")
+  print(electricity_data[rows_with_na, ])
+} else {
+  print("No rows with NA values.")
+}
+
+class(electricity_data)
+```
+```
+Columns and descriptions:
+1.	doeid                             Household ID
+2.	cellar                            House has cellar
+3.	tothsqft                          Total heated square feet surface
+4.	totusqft                          Total unheated square feet surface
+5.	totsqft                           Total square feet surface
+6.	dishwash                          Has dishwasher
+7.	CA                                House built in California
+8.	totrooms                          Total number of rooms
+9.	bedrooms                          Number of bedrooms
+10.	othrooms                          Number of rooms other than bedrooms
+11.	ownerocc                          House is occupied by owner
+12.	rural                             House is in rural area
+13.	frige0                            No friges
+14.	frige1                            One frige
+15.	frige2                            Two frige
+16.	frige3                            plus Three or more friges
+17.	freez0                            No freezer
+18.	freez1                            One freezer
+19.	freez2                            Two freezer
+20.	freez3                            plus Three or more freezers
+21.	cwasher                           Has washing machine
+22.	dryelect                          Has electric dryer
+23.	swimpool                          pool (heated in 1987)
+24.	tvsets                            Number of tv sets in the house
+25.	computers                         Number of computers
+26.	heatng                            Heating with natural gas
+27.	heatlpg                           Heating with lpg
+28.	heatoil                           Heating with oil
+29.	heatelect                         Heating with electricity
+30.	aircond                           Has air conditioning
+31.	centralair                        Has central air conditioning
+32.	hhsize                            Numer of household members
+33.	agehholder                        age of householder
+34.	kids                              no. of kids <=12 yrs old (14 for 2009)
+35.	seniors                           no. of hhold members >= 65 yrs old
+36.	hhincome                          Household income
+37.	yearmade                          Year the house was built
+38.	mbtuel                            Total electricity consumption, MBTU
+39.	eeprice2010                       State real electricity price 2010, cents per kWh
+```
+Summary of the data:
+```{r}
+str(electricity_data)
+print("****************************************************")
+print("Summary: ")
+summary(electricity_data)
+print("****************************************************")
+print("Sample data head: ")
+head(electricity_data)
+print("****************************************************")
+print("Some more data of relevance")
+table(electricity_data$CA)
+table(electricity_data$yearmade)
+```
+Assume that all houses built in California starting from 1978 are subject to mandatory energy saving 
+building codes. No building codes are introduced for houses built in other US states. 
+
+## A1) 
+Keep only data from California.
+
+Test whether households living in houses built in or after 1978 
+```{r}
+electricity_data$after1978 <- 0 # in 1978 the building codes are introduced
+electricity_data$before1978 <- 0
+electricity_data$after1978[electricity_data$year >= 1978] <- 1 
+electricity_data$before1978[electricity_data$year < 1978] <- 1
+head(electricity_data)
+```
+consume less electricity than households living in houses built before 1978. Use the control variables you believe are relevant and briefly explain why. What do you find? 
+
+### Answer A1
+To test whether households in California living in houses built in or after 1978 consume less electricity than households in houses built before 1978, a simple regression model can be used. Here, the dependent variable is electricity consumption (mbtuel). In my opinion, the key independent variables would be the house was built in or after 1978 (yearmade >= 1978). Additionally, include relevant control variables to account for other factors that might influence electricity consumption. Some potential control variables include:
+```{r warning=FALSE}
+#Regression model for California houses
+variables_interest <- c("after1978","tothsqft","totsqft","dishwash","totrooms","bedrooms",
+                        "rural","bedrooms","frige0","frige1","frige2",
+                        "frige3plus","freez1","freez2",
+                        "cwasher","dryelect","swimpool",
+                        "heatelect","aircond","centralair","hhsize",
+                        "agehholder","kids","seniors","hhincome")
+
+# understand variable correlation
+correlation_matrix_1 <- cor(electricity_data[, variables_interest])
+# First Correlation Plot
+require(corrplot)
+corrplot(correlation_matrix_1, method = "number", use = "complete",
+         tl.col = "black", type = "upper", tl.srt = 90,
+         diag = TRUE, sig.level = 0.05, insig = "blank",
+         addCoef.col = "black", number.cex = 0.7,
+         main = "Correlation Plot 1",
+         col = colorRampPalette(c("darkred", "white", "darkgreen"))(100),
+         lim = c(-1, 1))
+```
+
+I remove the freeze0 and freeze3plus to make sure that they wont affect the regression from plotting the correlation plot.
+```{r}
+names(electricity_data)
+```
+
+```{r}
+variables_interest_1 <- c("after1978","before1978","tothsqft","totsqft","dishwash",
+              "totrooms","bedrooms","rural",
+              "frige0","frige1","frige2",
+               "frige3plus","yearmade",
+               "freez1","freez2",
+               "cwasher","dryelect","swimpool",
+               "heatelect","aircond","centralair","hhsize",
+               "agehholder","kids","seniors","hhincome","CA")
+
+cat_vars_1 <- c("after1978","before1978","yearmade","dishwash",
+                "rural","frige0","frige1","frige2",
+                "frige3plus","freez1",
+                "freez2","cwasher",
+                "dryelect","swimpool","heatelect",
+                "aircond","centralair","CA")
+
+cont_vars_1 <- setdiff(variables_interest_1,cat_vars_1)
+
+#standardize continuous variables
+#for (colname in cont_vars_1){
+#  electricity_data[,colname] <- scale(electricity_data[,colname])
+#}
+
+
+#factorize the categorical variables
+for (colname in cat_vars_1){
+  electricity_data[,colname] <- as.factor(electricity_data[,colname])
+}
+
+
+electricity_data_ca <- electricity_data
+electricity_data_ca <- subset(electricity_data_ca, CA !=0)
+
+dim(electricity_data_ca)
+colSums(is.na(electricity_data_ca))
+str(electricity_data_ca)
+```
+```{r}
+#do a simple regression on data as is
+variables_simple <- c("after1978","before1978","tothsqft","totsqft","dishwash",
+              "totrooms","bedrooms","rural",
+              "frige0","frige1","frige2",
+               "frige3plus","yearmade",
+               "freez1","freez2",
+               "cwasher","dryelect","swimpool",
+               "heatelect","aircond","centralair","hhsize",
+               "agehholder","kids","seniors","hhincome")
+formula_str <- paste("mbtuel ~", paste(variables_simple, collapse = " + "))
+model_A1 <- lm(as.formula(formula_str), data = electricity_data_ca)
+summary(model_A1)
+```
+Controlling for all other variables mentioned above, there isn't any significant difference between the consumption before and after 1978 in California.
+```{r}
+names(electricity_data_ca)
+```
+
+```{r}
+library(dplyr)
+average_consumption_per_year <- electricity_data %>%
+  group_by(yearmade) %>%
+  summarise(avg_mbtuel = mean(mbtuel, na.rm = TRUE))
+
+names(average_consumption_per_year)
+
+plot(avg_mbtuel~yearmade, data=average_consumption_per_year, type = "l", lwd =5, main ="Average Electricity average_consumption_per_year versus year", xlab = "Year", ylab = "Avergae Consumptions in British Thermal Units")
+#lty denotes line type (6 different types), lwd denotes line width, type denotes the kind of plot (line in this case)
+abline(v = c(1978),col = "red", lty=3, lwd=2) # add vertical lines for year 1978
+```
+## A2) 
+Now use the whole dataset, and estimate the effect of building codes on electricity consumption, using a difference in differences approach and using as control group houses outside California. What do you find? (use the same house and household characteristics you used in question A1)
+### Answer
+For the difference-in-differences approach, we want to compare the change in electricity consumption for houses in California built in or after 1978 with the change in consumption for houses in other states. The interaction term yearmade * CA captures the difference-in-differences effect. Coefficient for this interaction term helps assess the impact of building codes on electricity consumption.
+
+```{r}
+# Create an interaction term for difference-in-differences
+library(estimatr)
+
+# generating the interaction terms
+electricity_data$CA_post1978 <- interaction(electricity_data$CA, electricity_data$after1978)
+
+electricity_data$CA_before1978 <- interaction(electricity_data$CA, electricity_data$before1978)
+
+variables_interest_all <- c("CA_post1978","after1978","tothsqft","totsqft",
+                  "dishwash","totrooms","yearmade",
+                  "bedrooms","rural","bedrooms","frige0","frige1",
+                  "frige2","frige3plus","freez1","freez2",
+                  "cwasher","dryelect","swimpool","heatelect",
+                  "aircond","centralair","hhsize","agehholder",
+                  "kids","seniors","hhincome", "CA")
+
+electricity_data_all <- electricity_data[,variables_interest_all]
+electricity_data_all$mbtuel <- electricity_data$mbtuel
+
+formula_str <- paste("mbtuel ~", paste(c(variables_interest_all), collapse = " + "))
+
+formula_str
+
+# Fit the difference-in-differences model
+model_A2 <- lm_robust(as.formula(formula_str), data = electricity_data_all)
+
+
+# Print the summary of the model
+summary(model_A2)
+```
+
+We see that prices in California are lesser than other areas by 
+-6.716 MBPU controlling for all other covariates and the results are significant with p-value less than 0.001. However, the building codes (given by after1978) do not provide any significant changes.
+
+## A3) 
+Difference in differences is one of the methods used by economists to identify causal effects. Why this model is necessary in this context, and why simply comparing electricity consumption between houses in California built before and after the introduction of building codes (as done in question A1) is not sufficient to identify the causal effect of the policy? What do you think are the limitations of the difference in differences approach in this context? 
+```{r}
+electricity_data <- Data
+library(ggplot2)
+ggplot(electricity_data, aes(x = yearmade, y = mbtuel, color = factor(CA))) +
+  stat_summary(fun.y = "mean", geom = 'line') +
+  geom_vline(xintercept = 1978, linetype = "dashed") +
+  theme_minimal() +
+  labs(title = "Average Electricity Consumption Over Years",
+       x = "Year Made",
+       y = "Electricity Consumption",
+       color = "After 1978")
+```
+
+The difference-in-differences approach is necessary in this context because simply comparing electricity consumption between houses in California built before and after the introduction of building codes (as in A1, given by after1978) may not account for other factors that could influence electricity consumption trends over time.
+
+Limitations of the difference-in-differences approach in this context include:
+
+ - Parallel Trends Assumption: The method relies on the assumption that, in the absence of the policy change, the treatment and control groups would have followed parallel trends. If this assumption is violated, the estimated causal effect may be biased. We see this being slightly violated.
+
+ - Time-Varying Confounders: The approach assumes that there are no time-varying factors that affect the treatment and control groups differently. If there are such confounders, the estimated effect may be biased.
+
+#Exercise B: Synthetic control methods
+In 1991 Sweden was one of the first countries to introduce a carbon tax for transport fuels. This exercise will ask you to evaluate the effectiveness of this carbon tax in reducing carbon emissions.
+
+```
+Column names and description
+CO2_transport_capita        CO2 ton emissions from transport per capita
+GDP_per_capita              GDP per capita in 2005 US dollars (PPP)
+gas_cons_capita             Gasoline consumption per capita in kg oil equivalent
+vehicles_capita             Motor vehicles per 1,000 people
+urban_pop                   Share of population living in urban areas
+Countryno                   Numeric code for country
+country                     Country name
+year                        Year
+treatment_policy Dummy=1 if country=Sweden and year>1990
+
+```
+##B1
+Run a synthetic control model for Sweden to evaluate the effect of the carbon tax on CO2 transport emissions per capita. Use all pre-treatment years and all available control countries. Remember to use the command dataprep to prepare the data. As output, generate two graphs: 
+1) a graph showing the evolution of CO2 per capita over time for Sweden and for the synthetic Sweden generated with the 
+synthetic control method; 
+2) a graph with the difference over time in terms of CO2 per capita between Sweden and the synthetic Sweden. What are your conclusions? Did the 1991 carbon tax reduce CO2 emissions?
+
+```{r}
+require(lfe)
+require(Synth)
+
+load("Data_CO2.RData")
+co2_data <- Data
+
+#summary
+head(co2_data)
+str(co2_data)
+unique(co2_data$year)
+```
+Steps:
+1. Choose the pre-treatment period between 1980 and 1990
+2. Treatment Unit: "Sweden"
+```{r}
+unique(co2_data$country)
+colnames(co2_data)
+unique(co2_data[,c("country","Countryno")])
+#subset(co2_data, country == "Sweden")
+```
+
+```{r}
+require(Synth)
+# Run synthetic control model
+co2_data$year <- as.numeric(co2_data$year)
+co2_data$country <- as.character(co2_data$country)
+
+dataprep.out <- dataprep(foo= co2_data,
+                         predictors= c("GDP_per_capita", 
+                                    "gas_cons_capita",
+                                    "urban_pop","pop_density"),
+                         predictors.op = "mean",
+                         time.predictors.prior = 1980:1990,
+                         #special.predictors = list(),
+                         dependent = "CO2_transport_capita",
+                         unit.variable = "Countryno",
+                         unit.names.variable = "country",
+                         time.variable = "year",
+                         treatment.identifier = 21,
+                         controls.identifier = c(1:20,22:25),
+                         time.optimize.ssr = 1970:1990,
+                         time.plot = 1960:2005
+                         )
+
+synth.out <- synth(data.prep.obj = dataprep.out, method = "All")
+path.plot(synth.res = synth.out,
+          dataprep.res = dataprep.out,
+          Ylab = "CO2 transport per capita",
+          Xlab = "year",
+          Ylim = c(0,3),
+          Legend = c("Sweden","Synthetic Sweden"),
+          Legend.position = "bottomright"
+)# 
+abline(v = c(1980,1990), col = "red", lty=3, lwd=2)# to add vertical lines at 1980 and 1990
+```
+# B2
+Show the set of weights W for the control countries. Which is the country with the highest weight? Which countries have zero weight? Does it make sense to you?
+Based on the covariates considered, we see that many countries have almost zero weights but not exactly zero. Near zero estimates are primarily attributed to the chosen covariates and the relevance of these covariates within other countries.  
+```{r}
+synth.tables <- synth.tab(dataprep.res = dataprep.out,
+                          synth.res = synth.out)
+
+synth.tables$tab.pred
+sorted_tab_w <- synth.tables$tab.w[order(synth.tables$tab.w,decreasing = TRUE), ]
+na.omit(sorted_tab_w)
+
+```
+
+# B3
+Perform a placebo test using the synthetic control. Pick three countries of your choice among the control countries, and for each of them run a synthetic control as if they introduced the 1991 carbon tax (remember to exclude Sweden when preparing the data). For each country, generate the equivalent of graph 1 in question B1. Do you find an effect of the placebo treatment? Do the results validate or invalidate the findings in question B1?
+```{r}
+# I try for NewZealand(16), Iceland(10), Norway(17)
+data.nz.placebo <- dataprep(foo= co2_data,
+                         predictors= c("GDP_per_capita", 
+                                    "gas_cons_capita",
+                                    "urban_pop","pop_density"),
+                         predictors.op = "mean",
+                         time.predictors.prior = 1980:1990,
+                         #special.predictors = list(),
+                         dependent = "CO2_transport_capita",
+                         unit.variable = "Countryno",
+                         unit.names.variable = "country",
+                         time.variable = "year",
+                         treatment.identifier = 16,
+                         controls.identifier = c(1:15,17:20,22:25),
+                         time.optimize.ssr = 1970:1990,
+                         time.plot = 1960:2005
+                         )
+
+data.ice.placebo <- dataprep(foo= co2_data,
+                         predictors= c("GDP_per_capita", 
+                                    "gas_cons_capita",
+                                    "urban_pop","pop_density"),
+                         predictors.op = "mean",
+                         time.predictors.prior = 1980:1990,
+                         #special.predictors = list(),
+                         dependent = "CO2_transport_capita",
+                         unit.variable = "Countryno",
+                         unit.names.variable = "country",
+                         time.variable = "year",
+                         treatment.identifier = 10,
+                         controls.identifier = c(1:9,11:20,22:25),
+                         time.optimize.ssr = 1970:1990,
+                         time.plot = 1960:2005
+                         )
+data.nr.placebo <- dataprep(foo= co2_data,
+                         predictors= c("GDP_per_capita", 
+                                    "gas_cons_capita",
+                                    "urban_pop","pop_density"),
+                         predictors.op = "mean",
+                         time.predictors.prior = 1980:1990,
+                         #special.predictors = list(),
+                         dependent = "CO2_transport_capita",
+                         unit.variable = "Countryno",
+                         unit.names.variable = "country",
+                         time.variable = "year",
+                         treatment.identifier = 17,
+                         controls.identifier = c(1:16,18:20,22:25),
+                         time.optimize.ssr = 1970:1990,
+                         time.plot = 1960:2005
+                         )
+
+synth.nz.placebo <- synth(data.prep.obj = data.nz.placebo, method = "All")
+
+synth.ice.placebo <- synth(data.prep.obj = data.ice.placebo, method = "All")
+
+synth.nr.placebo <- synth(data.prep.obj = data.nr.placebo, method = "All")
+
+```
+Plot the paths
+```{r}
+#NewZealand
+path.plot(synth.res = synth.nz.placebo,
+          dataprep.res = data.nz.placebo,
+          Ylab = "CO2 transport per capita",
+          Xlab = "year",
+          Ylim = c(0,3),
+          Legend = c("NewZealand","Synthetic NewZealand"),
+          Legend.position = "bottomright"
+)# 
+abline(v = c(1980,1990), col = "red", lty=3, lwd=2)# to add vertical lines at 1980 and 1990
+
+
+#Iceland
+path.plot(synth.res = synth.ice.placebo,
+          dataprep.res = data.ice.placebo,
+          Ylab = "CO2 transport per capita",
+          Xlab = "year",
+          Ylim = c(0,3),
+          Legend = c("Iceland","Synthetic Iceland"),
+          Legend.position = "bottomright"
+)# 
+abline(v = c(1980,1990), col = "red", lty=3, lwd=2)# to add vertical lines at 1980 and 1990
+
+#Norway
+path.plot(synth.res = synth.nr.placebo,
+          dataprep.res = data.nr.placebo,
+          Ylab = "CO2 transport per capita",
+          Xlab = "year",
+          Ylim = c(0,3),
+          Legend = c("Norway","Synthetic Norway"),
+          Legend.position = "bottomright"
+)# 
+abline(v = c(1980,1990), col = "red", lty=3, lwd=2)# to add vertical lines at 1980 and 1990
+```
+```{r}
+# gaps plot NewZealnd
+gaps.plot(synth.res = synth.nz.placebo,
+          dataprep.res = data.nz.placebo,
+          Ylab = "gap in CO2 transport per capita NZ",
+          Xlab = "year",
+          Ylim = c(-1,1))
+
+# add vertical lines
+abline(v = c(1980,1990), col = "red", lty=3, lwd=2)
+
+# gaps plot Iceland
+gaps.plot(synth.res = synth.ice.placebo,
+          dataprep.res = data.ice.placebo,
+          Ylab = "gap in CO2 transport per capita ICE",
+          Xlab = "year",
+          Ylim = c(-1,1))
+
+# add vertical lines
+abline(v = c(1980,1990), col = "red", lty=3, lwd=2)
+
+# gaps plot Norway
+gaps.plot(synth.res = synth.nr.placebo,
+          dataprep.res = data.nr.placebo,
+          Ylab = "gap in CO2 transport per capita NR",
+          Xlab = "year",
+          Ylim = c(-1,1))
+
+# add vertical lines
+abline(v = c(1980,1990), col = "red", lty=3, lwd=2)
+
+
+```
+From the graphs (with the exception of iceland), we see that the synthetic Sweden data shows higher CO2 per capita compared to to others while controlling for all the other variables. This states that indeed the the transport tax has a reduced effect.  
+
+# B4 
+The graph below shows the evolution over time of CO2 per capita for Sweden and the (unweighted) average CO2 per capita using all the OECD control countries. Now estimate the overall effect of the 1991 Swedish carbon tax using a difference in difference model, using year fixed effects and country fixed effects (the treatment_policy variable is already prepared). 
+```{r message=FALSE, warning=FALSE}
+library(plm)
+
+# Convert 'year' to a factor variable
+co2_data$year <- as.factor(co2_data$year)
+
+pdata_co2_data <- pdata.frame(co2_data, index = c("Countryno", "year"))
+
+# Estimate the DiD model with fixed effects
+did_model <- plm(CO2_transport_capita ~ treatment_policy + factor(year) + factor(Countryno), data = pdata_co2_data, model = "within")
+
+# View the results
+summary(did_model)
+```
+visualize the parallel trends
+```{r warning=FALSE}
+# Convert year to numeric
+co2_data$year <- as.numeric(as.character(co2_data$year))
+
+# Calculate mean values for each group
+mean_values <- co2_data %>%
+  group_by(year, treatment_policy) %>%
+  summarise(mean_CO2 = mean(CO2_transport_capita, na.rm = TRUE))
+
+# Filter for post-treatment years
+mean_values_post_treatment <- mean_values %>%
+  filter(year >= 1991)
+
+# Plot the means over time
+ggplot(mean_values_post_treatment, aes(x = year, y = mean_CO2, color = factor(treatment_policy))) +
+  geom_line() +
+ labs(title = "Mean CO2 Emissions per Capita: Sweden vs Control",
+       x = "Year", y = "Mean CO2 Emissions per Capita",
+       color = "Group") +
+  scale_color_discrete(labels = c("Control", "Sweden"))
+```
+
+Compare the results of the difference in difference model with those obtained with the synthetic control in question B1: how much the conclusions from the synthetic control differ from the results using difference in difference? What might be the reason?
+
+- The results in both the counts are significant, the treatment effect is lower compared to the control. However, the effects many not be as large as the DiD method. DiD methods also need parallel trends assumption which is not true here clearly. 
+DiD method shows a larger impact but when looked into the synthetic control, we match it to a similar control group through weighting.
+
+

@@ -1,0 +1,186 @@
+---
+title: "Assignment3"
+author: "Rohit Koonireddy"
+date: "2023-12-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+**Exercise A**
+```{r message=FALSE, warning=FALSE}
+#import relevant libraries
+library(mlogit)
+library(dfidx)
+library(AER)
+library(nnet)
+
+# load the data
+load("DataTransport.RData")
+str(Data)
+
+#check na columns
+na_count_by_column <- colSums(is.na(Data))
+print(na_count_by_column)
+
+#transport data is in wide format
+transport_data <- Data
+library(dplyr)
+
+transport_data <- transport_data %>%
+  mutate(choice = ifelse(choice == 1, "yes", "no"))
+
+transport_data <- transport_data %>%
+  select(id, mode, choice, everything())
+
+transport_data <- distinct(transport_data)
+head(transport_data,20)
+```
+```{r}
+#take unique values
+transport_data_unique <- transport_data %>%
+  distinct(id, mode, .keep_all = TRUE)
+
+str(transport_data_unique)
+```
+
+```{r}
+#transform data to long
+transport <- dfidx(transport_data_unique, 
+                idx = list("id", "mode"), 
+                choice = "choice", # not really needed here
+                levels = c("Helicopter","WaterTaxi","Ferry","Hovercraft"))
+
+transport <- na.omit(transport)
+head(transport)
+with(transport_data_unique, prop.table(table(mode[choice == "yes"])))
+```
+```{r}
+colnames(transport_data_unique)
+```
+
+
+A1) Estimate a multinomial logit model about the choice of transportation mode. You can include as 
+many controls as you want, but you need to include at least the cost and the risk attributes. Show the 
+coefficient results. NOTE: The risk variable is constant for each option. It is thus possible to have 
+collinearity problems if you include individual characteristics in the model. Feel free to use only the 
+attributes/individual characteristics that allow the model to work.
+```{r}
+# Fit a multinomial logit model
+mlogit_model <- mlogit(choice ~ cost + risk + noise + crowdness+ convloc+clientele| 0, data=transport)
+
+# Summarize the results
+summary(mlogit_model)
+```
+
+A2) What is the marginal effect of a change in the cost of the ferry on the probability of taking the 
+water taxi? Explain what that number means. NOTE: as we saw in class, the marginal effect formula 
+depends on 𝑃𝑖𝑗 and therefore on the exact value of the choice attributes/individual characteristics. 
+For this exercise, use for each choice the average of each attribute and the average of the individual 
+characteristics (if you include any of them).
+
+1 unit chage in the cost of ferry will increase the probability of taking water taxi by 11.67% as shown.
+```{r}
+#different way to run the marginal effect
+effects(mlogit_model, covariate = "cost", type = "ar")
+```
+
+A3) Calculate the WTP to reduce passenger/trip death. Explain how you calculate this value and its 
+meaning. HINT: look at the slides and the papers discussed in class.
+
+WTP increase by 0.25 for reduced risk.
+```{r}
+# Extract coefficients
+coef_risk <- coef(mlogit_model)["risk"]
+coef_cost <- coef(mlogit_model)["cost"]
+
+WTP_risk_cost <- coef_cost/coef_risk
+WTP_risk_cost
+```
+A4) Estimate the same model in question A1 by using a nested logit model with 2 nests. Justify your 
+choice of the branches/nests. Show the resulting coefficients and explain the advantages and 
+disadvantages of this model compared to the multinomial logit estimated in question A1.
+```{r}
+nested_model <- mlogit::mlogit(choice ~ cost + risk + noise + crowdness+ convloc+clientele | 0 | mode, transport)
+
+cat("Nested Logit Model:", "\n")
+summary(nested_model)
+```
+
+BONUS QUESTION: Answer question A5 for extra points on your assignment grade
+A5) Estimate the same model in question A1 by using a random coefficients logit. Explain which
+coefficient(s) you impose as random and why you think is a good assumption. Show the coefficient 
+estimates and explain the advantages and disadvantages of this model compared to the multinomial 
+logit estimated in question A1.
+
+I think risk perception and the noise level can be relative and can be judged by various factors, I chose these 2 as my random variables.
+```{r}
+random_model <- mlogit::mlogit(choice ~ cost + risk + noise + crowdness+ convloc+clientele  | 0, transport, rpar = c( risk = "n", noise="n"))
+
+cat("Random Coefficients Logit Model:", "\n")
+summary(random_model)
+```
+
+
+**Exercise B**
+In the file DataAIDS.RData you will find data from Chang and Serletis (2014). The data, originally taken 
+from the 1997-2009 Survey of Household Spending of Canada, contains information on expenditure in 
+the transportation sector of 2218 Canadian households made by single individuals. The transportation 
+expenditure is divided between gasoline (good 1), local public transport (good 2) and intercity 
+transport like buses (good 3). The data contains the year (year), the total transportation expenditure 
+(y), the share of transportation expenditure spent for each transport option (s1, s2, s3), the normalized 
+2002 prices of the good based on the consumer price index (p1, p2, p3).1
+Use the micEconAids package to run an Almost Ideal Demand System for the transportation choices of 
+the sample and answer the following questions:
+
+B1) Calculate the own- and cross-elasticities (choose and comment only one between 
+Hicksian/compensated or Walrasian/Marshallian/uncompensated throughout the whole exercise) of 
+the three transportation choices using an AIDS model and without approximating the price index (i.e. 
+using the iterated linear least squares procedure). Give a brief interpretation of the results underlining 
+the key findings.
+```{r message=FALSE, warning=FALSE}
+# Load the micEconAids package
+library(micEconAids)
+
+# Load the data
+load("DataAIDS.RData")
+
+# Explore the structure of the data
+str(Data)
+
+priceNames <- c("p1", "p2", "p3")
+shareNames <- c("s1", "s2", "s3")
+
+# Run the AIDS model using the iterated linear least squares procedure (IL)
+est_result_IL <- aidsEst(priceNames, shareNames, "y", data = Data, method = "IL")
+
+# Display summary of the results
+summary(est_result_IL)
+
+# Calculate own- and cross-elasticities
+elas_IL <- elas(est_result_IL)
+print("B1) Own- and Cross-Elasticities (Hicksian/Compensated):")
+print(elas_IL)
+```
+
+B2) Calculate the own- and cross-elasticities of the three transportation choices using an AIDS model 
+and using the Stone price index as linear approximation of the price index. Compare the results 
+obtained with and without approximating the price index. What do you notice? Do you believe that in 
+this case the results using the Stone price index linearization are acceptable compared to those 
+obtained with model using the ILLS in question B1?
+```{r}
+est_result_LA_S <- aidsEst(priceNames, shareNames, "y",
+                          data = Data,
+                          method = "LA",  # Linear Approximation
+                          priceIndex = "S")  # Use Stone index
+
+# Display summary of the results
+summary(est_result_LA_S)
+
+```
+The LA-S model, using the Stone price index, generally yields more elastic responses compared to the IL model.
+The choice of the linear approximation method can impact the magnitude and direction of elasticities.
+
+1 That means that 1 is the value of 2002 and represents the reference value. For instance, if the price for 2005 
+is 1.07 it means that the price increased by 7% compared to 2002.

@@ -1,0 +1,208 @@
+---
+title: "Assignment_1"
+author: "Rohit Koonireddy"
+date: "2023-10-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+options(digits = 3) # reduce number of signif digits to print in results (default is 7)
+require(Synth) # (this is an example of how to call the Synth library in RStudio)
+require(markdown)
+require(tidyverse)
+require(stargazer)
+```
+<!--------------------------------------------------------->
+## Answer to Question 1
+
+### Q1.A)
+
+..answer text..
+```{r q1A, message=FALSE, warning=FALSE}
+setwd("D:/Sem_4/Applied Econometrics in Environmental and Energy Policy/HomeWork/TH1/")
+#list.files(getwd())
+load("Takehome_1.RData")
+object_names <- ls()
+object_names
+class(Takehome_1)
+str(Takehome_1)
+```
+
+
+```{r libraries for panel data, message=FALSE, warning=FALSE}
+require(plm) # For panel data analysis
+require(lfe) # For fixed effects models
+
+#create the required panel data
+data_df <- pdata.frame(Takehome_1, index = c("state","year"))
+head(data_df)
+
+```
+
+Recreating the regressions for Table 1 :
+```{r message=FALSE, warning=FALSE}
+
+#Function to calculate percentage changes
+get_delta_consumption_price <- function(model_inside, percentage_change){
+  coef_values <- coef(model_inside)
+  standard_errors <- summary(model_inside)$coefficients[, "Std. Error"]
+
+  actual_coefficients <- exp(coef_values)
+  actual_standard_errors <- actual_coefficients * standard_errors
+  
+  # Calculate the percent change in gas consumption
+  percent_change_1 <- coef_values * percentage_change * 100 + standard_errors
+  
+  # Calculate the standard error of the percent change
+  se_percent_change_1 <- standard_errors * percentage_change * 100
+  
+ return(paste0("percentage change: ", format(percent_change_1, nsmall = 2), "\n", "standard error percentage change: ", format(se_percent_change_1, nsmall = 2)))
+
+}
+
+
+#Model 1
+# 1. Fixed Effects (within) <- effect uses the state fixed effects
+model_1 <- plm(log(hug/apop_adj) ~ log(taxin_gas_price), data = data_df, model = "within", effect = "individual")
+
+
+# Model 2
+# 2. Fixed Effects (within) <- effect uses the state fixed effects
+#create variables
+data_df$tax.exlc.price <- data_df$taxin_gas_price - (data_df$gas_tax_all)
+data_df$tax_ratio <- data_df$gas_tax_all / data_df$taxin_gas_price
+model_2 <- plm(log(hug/apop_adj) ~ log(tax.exlc.price)+log(1+tax_ratio), data = data_df, model = "within", effect = "individual")
+
+
+#Model 3 <- uses both state and year fixed effects
+model_3 <- plm(log(hug/apop_adj) ~ log(taxin_gas_price), data = data_df, model = "within", effect = "twoways")
+
+#Model 4 <- 
+model_4 <- plm(log(hug/apop_adj) ~ log(tax.exlc.price)+log(1+tax_ratio), data = data_df, model = "within", effect = "twoways")
+
+```
+The results are not similar to what we see in the paper but close for Regression 1. 
+Now we see parts 5,6,7,8
+
+```{r message=FALSE, warning=FALSE}
+data_df_numeric <- data_df[,!colnames(data_df) %in% c("state","label","region","year","id","sgastax","fgastax")]
+data_df_numeric <- Takehome_1[,!colnames(Takehome_1) %in% c("state","label","region","year","id")]
+
+# understand variable correlation
+correlation_matrix_1 <- cor(data_df_numeric)
+# First Correlation Plot
+require(corrplot)
+corrplot(correlation_matrix_1, method = "number", use = "complete",
+         tl.col = "black", type = "upper", tl.srt = 90,
+         diag = TRUE, sig.level = 0.05, insig = "blank",
+         addCoef.col = "black", number.cex = 0.7,
+         main = "Correlation Plot 1",
+         col = colorRampPalette(c("darkred", "white", "darkgreen"))(100),
+         lim = c(-1, 1))
+```
+Based on the correlation matrix, following fields can be used as covariates (I ignore the items that have very high correlation):
+1. state_num	Identifier for the state FIPS code
+2. trend
+3. no_truck
+4. road_mileage
+5. fsize
+6. urbanization
+7. drivers_capita
+8. autos_capita
+
+```{r message=FALSE, warning=FALSE, paged.print=TRUE}
+#Model 5 <- uses covariates along with both fixed affects
+model_5 <- plm(log(hug/apop_adj) ~ log(taxin_gas_price)+tax_ratio+state_num+trend+no_truck+road_mileage+fsize+urbanization+drivers_capita+autos_capita, data = data_df, model = "within", effect = "twoways")
+
+#Model 6
+model_6 <- plm(log(hug/apop_adj) ~ log(tax.exlc.price)+log(1+tax_ratio)+state_num+trend+no_truck+road_mileage+fsize+urbanization+autos_capita, data = data_df, model = "within", effect = "twoways")
+
+#Model 7
+model_7 <- plm(log(hug/apop_adj) ~ log(taxin_gas_price)+state_num+trend+trend2+no_truck+road_mileage+fsize+urbanization+drivers_capita+autos_capita, data = data_df, model = "within", effect = "twoways") 
+
+#Model 8
+model_8 <- plm(log(hug/apop_adj) ~ log(tax.exlc.price)+log(1+tax_ratio)+state_num+trend+trend2+no_truck+road_mileage+fsize+urbanization+autos_capita, data = data_df, model = "within", effect = "twoways")
+
+model_list_1 <- list(model_1, model_2, model_3, model_4)
+model_list_2 <- list(model_5,model_6,model_7,model_8)
+
+stargazer(model_list_1, type= "text")
+stargazer(model_list_2, type= "text")
+
+#you can run for each model to see the output for percentage using this code.
+#get_delta_consumption(model_1,0.05)
+```
+Overall, my results are not exactly same as those present in the paper but they are close. I am not entirely sure if the covariates and transformed covariates I used are the same as the ones authors used. 
+
+<!------------------------>
+### Q1.B)
+
+a)Coefficient of fuel tax vary more i.e. the negative change in the log(fuel consumption) in more than the affect of the tax.exclusive fuel price.
+b) For the regressions I ran, it is evident that, tax ratio significant under-miner for fuel consumption.
+
+<!------------------------>
+
+
+<!--------------------------------------------------------->
+<!--------------------------------------------------------->
+## Answer to Question 2
+
+### Q2.A)
+
+State fixed effects and state quadratic trends are both used in panel data analysis to control for state-specific factors that may affect the dependent variable (gasoline consumption in this case). The key differences between them are as follows:
+
+State Fixed Effects: State fixed effects capture the average difference in the dependent variable for each state compared to a reference state (usually the omitted category). They control for all time-invariant state-specific factors that could affect the dependent variable. For example, they account for factors such as state-level policies, culture, and geography. In the context of this paper, state fixed effects would capture the unchanging differences in gasoline consumption among states over time.
+
+State Quadratic Trends: State quadratic trends capture the long-term trend or curvature in the relationship between the state-specific variable and the dependent variable. They allow for a non-linear, time-varying relationship between the state-specific variable and the dependent variable. For example, if a state's gasoline consumption follows a quadratic trend over time due to changes in population, economic development, or other factors, state quadratic trends would capture this pattern.
+
+<!------------------------>
+### Q2.B)
+
+The decline in the absolute value of the main coefficients when state quadratic trends are included suggests that the initial results in columns (5) and (6) might have overestimated the effect of gasoline taxes (in absolute terms). This could be due to the omission of the long-term trends and curvatures in the relationship between gasoline taxes and consumption that are captured by the state quadratic trends. In other words, the inclusion of state quadratic trends provides a more refined and accurate estimate of the effect of gasoline taxes by accounting for these trends.
+
+### Q2.C)
+
+Controlling for state-specific shocks can be challenging in panel data analysis. While state fixed effects account for time-invariant state-specific factors, they do not directly capture state-specific shocks that may vary from year to year. To control for such shocks, we often rely on time-specific fixed effects, year fixed effects, or additional covariates that might indirectly capture state-specific variations. However, including time-specific fixed effects or year fixed effects may not fully control for state-specific shocks. Alternatively, we can include lagged values of the dependent variable or other lagged covariates to account for serial correlation and potential state-specific shocks. The choice of approach depends on the specific data and research question.
+
+<!--------------------------------------------------------->
+<!--------------------------------------------------------->
+## Answer to Question 3
+
+One potential problem with the set of estimations presented in Table 2, given that it's a demand model, is endogeneity. Endogeneity occurs when one or more independent variables are correlated with the error term in a regression model. In the context of this study, endogeneity could arise for several reasons:
+
+Reverse Causality: The direction of causality between gasoline taxes and gasoline consumption might not be one-way. Consumers' behavior could influence changes in gasoline taxes, which would lead to reverse causality. For example, if policymakers respond to changes in consumer demand for gasoline by adjusting taxes, this creates a feedback loop.
+
+Omitted Variables: The estimations in Table 2 include a variety of fixed effects and covariates to control for potential confounding factors. However, there might still be unobserved variables that affect both gasoline taxes and consumption. Omitted variables can lead to endogeneity if these unobserved factors are correlated with the included independent variables.
+
+Measurement Error: Measurement error in the gasoline tax variable or other variables used in the model could introduce endogeneity. Measurement errors can bias the coefficient estimates and lead to incorrect inferences.
+
+Simultaneity Bias: If there are feedback effects between gasoline consumption and gasoline taxes that occur simultaneously, this could result in simultaneity bias. In a demand model, this would manifest as a two-way relationship between prices (gasoline taxes) and quantities (consumption).
+
+Non-Linear Relationships: The model specifications in Table 2 assume a linear relationship between the independent variables and gasoline consumption. If the actual relationship is non-linear, it can lead to endogeneity issues.
+
+Dynamic Effects: The study may not account for lagged effects and dynamic adjustments in consumers' responses to gasoline taxes. Ignoring dynamic effects can result in endogeneity, especially if consumers respond to past changes in taxes.
+
+The presence of endogeneity can bias the coefficient estimates and standard errors, leading to invalid results. It can also make it challenging to establish causal relationships between gasoline taxes and consumption. To address potential endogeneity issues, researchers often employ instrumental variable (IV) approaches, natural experiments, or other advanced econometric techniques. Additionally, the use of panel data with fixed effects is one way to control for unobserved heterogeneity and address endogeneity concerns.
+
+<!--------------------------------------------------------->
+<!--------------------------------------------------------->
+## Answer to Question 4
+It is evident from the study that the increased perception of more taxes on gasoline have positive affects on environment and revenue. While it is beneficial for governments to incorporate higher taxes, generalized view could also imply adversely affective economically backward sectors of the society. It could be beneficial to do more study and incorporate taxes based on state level tolerance. Wealthier states or urban areas can pay higher taxes which can both benefit in efficient usage of the infrastructure.  
+
+- Understanding Elasticity: The study highlights the importance of knowing how consumers react to tax changes. This helps policymakers design effective tax policies.
+- Tax Goals: Decide if the goal of gasoline taxes is to reduce consumption, raise revenue, or both. The study shows that consumers respond more to tax changes than price changes.
+- Effective Tool: Gasoline taxes are effective for reducing consumption and promoting energy efficiency.
+- Optimal Tax Levels: Carefully assess and model the ideal tax levels to balance goals.
+- Monitoring: Implement a robust monitoring system to evaluate tax policy effects.
+- Public Support: Engage the public to explain the need for gasoline taxes.
+- Income Distribution: Consider how taxes affect different income groups and use subsidies if needed.
+- Long-Term View: Think long-term and review policies periodically.
+- Global Commitments: Align tax policies with international environmental goals.
+- Research: Keep researching and collecting data to refine policies.
+
+
+
+
+
+
